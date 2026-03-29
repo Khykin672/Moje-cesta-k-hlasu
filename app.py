@@ -15,7 +15,7 @@ def load_data():
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Ošetření starších verzí souboru
+                if "trusted_people" not in data: data["trusted_people"] = []
                 if "mission_history" not in data: data["mission_history"] = []
                 if "completed_days" not in data: data["completed_days"] = []
                 return data
@@ -50,6 +50,7 @@ def speak(text):
             fp = io.BytesIO()
             tts.write_to_fp(fp)
             b64 = base64.b64encode(fp.getvalue()).decode()
+            # Autoplay trik pro prohlížeč
             md = f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
             st.markdown(md, unsafe_allow_html=True)
         except: st.error("Chyba zvuku")
@@ -65,78 +66,86 @@ st.markdown("""
 
 # --- 4. HLAVNÍ MENU ---
 tabs = st.tabs(["🏠 Domů", "🗣️ Hlas", "📅 Plánovač", "📈 Historie"])
-
-# Pomocné dny
 dny = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
 
 with tabs[0]:
     st.title("Moje Cesta 🦋")
     st.markdown(f'<div class="status-box"><b>Level {st.session_state.xp // 100 + 1}</b> | {st.session_state.xp} XP</div>', unsafe_allow_html=True)
     st.progress(min((st.session_state.xp % 100) / 100, 1.0))
+    
+    st.subheader("👥 S kým už dokážu mluvit")
+    new_person = st.text_input("Přidej novou osobu:", key="new_p")
+    if st.button("Přidat do seznamu ✨"):
+        if new_person and new_person not in st.session_state.trusted_people:
+            st.session_state.trusted_people.append(new_person)
+            save_data()
+            st.rerun()
+    
+    if st.session_state.trusted_people:
+        st.write(", ".join(st.session_state.trusted_people))
+    else:
+        st.info("Zatím jsi nepřidal(a) žádnou osobu.")
 
 with tabs[1]:
     st.subheader("Rychlá mluva 🔊")
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("AHOJ 👋"): speak("Ahoj")
         if st.button("DĚKUJI ❤️"): speak("Děkuji")
+        if st.button("NE ❌"): speak("Ne")
     with c2:
         if st.button("PROSÍM 🙏"): speak("Prosím")
         if st.button("ANO ✅"): speak("Ano")
+        if st.button("NA SHLEDANOU 👋"): speak("Na shledanou")
+    
+    st.divider()
+    st.subheader("Napiš, co mám říct ✍️")
+    custom_text = st.text_input("Vložte vlastní text:", placeholder="Např. Jak se máš?")
+    if st.button("Přečíst text 🗣️"):
+        speak(custom_text)
 
 with tabs[2]:
     st.subheader("📅 Týdenní plán misí")
-    
     for d in dny:
         col1, col2 = st.columns([3, 1])
         is_done = d in st.session_state.completed_days
-        
         with col1:
             if is_done:
                 st.markdown(f"**{d}:** <span class='done-mission'>{st.session_state.weekly_plan[d]}</span> ✅", unsafe_allow_html=True)
             else:
                 st.session_state.weekly_plan[d] = st.text_input(f"Mise na {d}:", value=st.session_state.weekly_plan[d], key=f"in_{d}")
-        
         with col2:
             if not is_done and st.button("HOTOVO 🏆", key=f"btn_{d}"):
                 st.session_state.current_completing_day = d
                 st.rerun()
 
-    # Okno pro dokončení mise (Mood Tracker)
     if 'current_completing_day' in st.session_state:
         day_to_finish = st.session_state.current_completing_day
         st.divider()
         st.subheader(f"Dokončení mise: {st.session_state.weekly_plan[day_to_finish]}")
-        
         m_before = st.select_slider("Nálada PŘED:", options=["😢", "😟", "😐", "🙂", "😊"], value="😐", key="mb")
         m_after = st.select_slider("Nálada PO:", options=["😢", "😟", "😐", "🙂", "😊"], value="😊", key="ma")
-        
         if st.button("Potvrdit a uložit body! ✨"):
-            # Uložit do historie
             st.session_state.mission_history.append({
                 "date": datetime.now().strftime("%d.%m."),
                 "day": day_to_finish,
                 "text": st.session_state.weekly_plan[day_to_finish],
                 "moods": f"{m_before} ➔ {m_after}"
             })
-            # Přičíst XP a označit jako hotové
             st.session_state.xp += 50
             st.session_state.completed_days.append(day_to_finish)
             del st.session_state.current_completing_day
-            save_data()
-            st.balloons()
-            st.rerun()
+            save_data(); st.balloons(); st.rerun()
 
     if st.button("Uložit změny v plánu 🔒"):
-        save_data()
-        st.success("Plán uložen do paměti!")
+        save_data(); st.success("Plán uložen!")
 
 with tabs[3]:
     st.subheader("📈 Historie úspěchů")
-    if st.button("Smazat historii a resetovat týden (POZOR)"):
+    if st.button("Smazat historii a resetovat týden"):
         st.session_state.completed_days = []
         st.session_state.mission_history = []
         save_data(); st.rerun()
         
     for h in reversed(st.session_state.mission_history):
-        st.info(f"**{h['date']} ({h['day']})**: {h['text']} | Nálada: {h['moods']}")
+        st.info(f"**{h['date']} ({h['day']})**: {h} | Nálada: {h['moods']}")
