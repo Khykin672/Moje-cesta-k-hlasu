@@ -1,3 +1,4 @@
+python
 import streamlit as st
 import json
 import os
@@ -9,15 +10,15 @@ import random
 
 # --- 1. KONFIGURACE PRO MOBIL ---
 st.set_page_config(
-    page_title="Hrdinská Cesta", 
+    page_title="Hrdinská Cesta 🦋", 
     page_icon="🦋", 
-    layout="centered", # Centrování pro úzké displeje
+    layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-DATA_FILE = "moje_data_v2.json"
+DATA_FILE = "moje_data_v3.json"
 
-# --- 2. LOGIKA DAT ---
+# --- 2. LOGIKA DAT (BEZ CHYB PŘI UKLÁDÁNÍ) ---
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
@@ -25,170 +26,214 @@ def load_data():
                 return json.load(f)
         except: pass
     return {
-        "xp": 0, "level": 1, "trusted_people": [], 
-        "mission_history": [], "completed_missions_ids": [],
+        "xp": 0,
+        "trusted_people": [], 
+        "mission_history": [], 
+        "completed_missions_ids": [],
         "weekly_plan": {d: "" for d in ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]}
     }
 
 def save_data():
+    # Ukládáme jen čistá data, ne celý session_state (to byla ta chyba v obrázku)
+    data_to_save = {
+        "xp": st.session_state.xp,
+        "trusted_people": st.session_state.trusted_people,
+        "mission_history": st.session_state.mission_history,
+        "completed_missions_ids": st.session_state.completed_missions_ids,
+        "weekly_plan": st.session_state.weekly_plan
+    }
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(st.session_state.to_dict(), f, ensure_ascii=False, indent=4)
+        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
+# Inicializace session_state
 if 'initialized' not in st.session_state:
     data = load_data()
-    for k, v in data.items(): st.session_state[k] = v
+    st.session_state.xp = data.get("xp", 0)
+    st.session_state.trusted_people = data.get("trusted_people", [])
+    st.session_state.mission_history = data.get("mission_history", [])
+    st.session_state.completed_missions_ids = data.get("completed_missions_ids", [])
+    st.session_state.weekly_plan = data.get("weekly_plan", {d: "" for d in ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]})
     st.session_state.initialized = True
 
-# Helper pro uložení stavu session do diktátu
-def to_dict():
-    return {k: v for k, v in st.session_state.items() if k not in ['initialized', 'current_tab']}
-st.session_state.to_dict = to_dict
-
-# --- 3. PROFI DESIGN (CSS) ---
+# --- 3. PROFI MOBILNÍ DESIGN (CSS) ---
 st.markdown("""
     <style>
-    /* Mobilní optimalizace */
-    .stApp { background-color: #F8F9FA; }
+    .stApp { background-color: #fdf6ff; }
+    [data-testid="stHeader"] { background: rgba(0,0,0,0); }
+    
+    /* Karty a boxíky */
     .main-card {
-        background: white; padding: 20px; border-radius: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px;
-        border-left: 5px solid #A06CD5;
+        background: white; padding: 15px; border-radius: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 15px;
+        border-left: 6px solid #A06CD5;
     }
-    .level-badge {
-        background: linear-gradient(135deg, #A06CD5, #6247AA);
-        color: white; padding: 10px 20px; border-radius: 50px;
-        font-weight: bold; font-size: 1.2rem; display: inline-block;
+    
+    /* Statistiky nahoře */
+    .stats-container {
+        display: flex; justify-content: space-around;
+        background: white; padding: 10px; border-radius: 15px;
+        margin-bottom: 20px; border: 1px solid #E0E0E0;
     }
+
+    /* Tlačítka pro mobil */
     .stButton>button {
-        width: 100%; border-radius: 12px; height: 3em; 
-        background-color: white; border: 2px solid #E0E0E0;
-        font-weight: bold; transition: 0.3s;
+        width: 100%; border-radius: 15px; height: 3.5em; 
+        font-weight: bold; font-size: 16px !important;
+        border: 2px solid #F0F0F0; transition: 0.3s;
     }
-    .stButton>button:hover { border-color: #A06CD5; color: #A06CD5; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #f0f0f0; border-radius: 10px 10px 0 0; padding: 10px;
-    }
+    
+    /* Vylepšení pro písmo */
+    h1, h2, h3 { color: #4A4A4A; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    
+    /* Skrytí menu Streamlitu pro čistý vzhled */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. FUNKCE ---
+# --- 4. POMOCNÉ FUNKCE ---
 def speak(text):
     if text:
-        tts = gTTS(text=text, lang='cs')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        b64 = base64.b64encode(fp.getvalue()).decode()
-        md = f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
-        st.markdown(md, unsafe_allow_html=True)
+        try:
+            tts = gTTS(text=text, lang='cs')
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            b64 = base64.b64encode(fp.getvalue()).decode()
+            md = f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
+            st.markdown(md, unsafe_allow_html=True)
+        except: st.error("Chyba hlasového výstupu.")
 
 # --- 5. OBSAH APLIKACE ---
 
-# Horní stavová lišta (vždy viditelná)
-col1, col2 = st.columns([1, 1])
-with col1:
-    st.markdown(f'<div class="level-badge">Level {st.session_state.xp // 100 + 1}</div>', unsafe_allow_html=True)
-with col2:
-    st.metric("Hvězdy ✨", st.session_state.xp)
+# Horní panel (Levely a XP)
+level = (st.session_state.xp // 100) + 1
+st.markdown(f"""
+    <div class="stats-container">
+        <div style="text-align:center"><b>Level</b><br><span style="font-size:1.5rem; color:#A06CD5;">{level}</span></div>
+        <div style="text-align:center"><b>XP Hrdinky</b><br><span style="font-size:1.5rem; color:#A06CD5;">{st.session_state.xp}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-tabs = st.tabs(["🏠 Domů", "🪜 Mise", "🌙 Rituál", "📊 Deník"])
+tabs = st.tabs(["🏠 Domů", "🪜 Mise", "🌙 Rituál", "📈 Deník"])
 
-# --- TAB 1: DOMŮ ---
+# --- TAB 1: DOMŮ (HLAS A LIDÉ) ---
 with tabs[0]:
-    st.markdown('<div class="main-card"><h3>Ahoj Hrdinko! 👋</h3><p>Dneska je krásný den na jeden malý krůček.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-card"><h3>Moje hlasová kouzla ✨</h3><p>Klikni na tlačítko a já to řeknu za tebe.</p></div>', unsafe_allow_html=True)
     
-    st.subheader("Rychlá mluva 🔊")
     c1, c2 = st.columns(2)
-    words = [("Ahoj 👋", "Ahoj"), ("Děkuji ❤️", "Děkuji"), ("Prosím 🙏", "Prosím"), ("Ano ✅", "Ano"), ("Ne ❌", "Ne"), ("Mám dotaz 🙋‍♀️", "Mám dotaz")]
-    for i, (label, sound) in enumerate(words):
+    slova = [("AHOJ 👋", "Ahoj"), ("DĚKUJI ❤️", "Děkuji"), ("PROSÍM 🙏", "Prosím"), ("ANO ✅", "Ano"), ("NE ❌", "Ne"), ("MÁM DOTAZ 🙋‍♀️", "Mám dotaz")]
+    for i, (label, sound) in enumerate(slova):
         with (c1 if i % 2 == 0 else c2):
-            if st.button(label): speak(sound)
+            if st.button(label, key=f"voice_{i}"): speak(sound)
+    
+    st.divider()
+    st.subheader("👥 Moje bezpečná skupina")
+    new_person = st.text_input("Přidej někoho, s kým už mluvíš:", key="add_p", placeholder="Jméno...")
+    if st.button("Přidat do týmu ✨"):
+        if new_person and new_person not in st.session_state.trusted_people:
+            st.session_state.trusted_people.append(new_person)
+            save_data()
+            st.rerun()
+    
+    if st.session_state.trusted_people:
+        st.info("Tým hrdinky: " + ", ".join(st.session_state.trusted_people))
 
 # --- TAB 2: ŽEBŘÍK STATEČNOSTI (10 LEVELŮ) ---
 with tabs[1]:
-    st.subheader("🪜 Žebřík statečnosti")
-    st.caption("Postupuj od nejlehčího po největší výzvy.")
+    st.markdown('<div class="main-card"><h3>🪜 Žebřík statečnosti</h3><p>Tady jsou tvoje mise. Zvládneš je všechny?</p></div>', unsafe_allow_html=True)
     
     zebrik = [
         "1. Usmát se na někoho ve škole",
-        "2. Zamávat na pozdrav",
-        "3. Kývnout 'Ano/Ne' na otázku",
-        "4. Šeptnout 'Ahoj' kamarádce",
-        "5. Půjčit si od někoho tužku (beze slov)",
-        "6. Říct 'Dobrý den' nahlas",
-        "7. Odpovědět celou větou učitelce",
-        "8. Zeptat se v obchodě: 'Kolik to stojí?'",
-        "9. Zvednout ruku a odpovědět ve třídě",
-        "10. Vyprávět krátký příběh skupince lidí"
+        "2. Zamávat na pozdrav (beze slov)",
+        "3. Kývnout 'Ano/Ne' na otázku učitele",
+        "4. Šeptnout 'Ahoj' své kamarádce",
+        "5. Půjčit si od někoho věc (ukázáním nebo šeptem)",
+        "6. Říct 'Dobrý den' nahlas při příchodu",
+        "7. Odpovědět učitelce celou větou",
+        "8. V obchodě si sama objednat (např. jeden rohlík)",
+        "9. Zvednout ruku a odpovědět na otázku ve třídě",
+        "10. Vyprávět krátký zážitek před celou třídou"
     ]
 
     for i, mise in enumerate(zebrik):
         is_completed = i in st.session_state.completed_missions_ids
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            color = "green" if is_completed else "black"
-            st.markdown(f"<p style='color:{color}; font-size:1.1rem;'>{'✅' if is_completed else '⚪'} {mise}</p>", unsafe_allow_html=True)
-        with col2:
-            if not is_completed:
-                if st.button("Splnit", key=f"zeb_{i}"):
-                    st.session_state.completed_missions_ids.append(i)
-                    st.session_state.xp += 30
-                    save_data()
-                    st.balloons()
-                    st.rerun()
+        # Kontejner pro každou misi
+        with st.container():
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                text_style = "color: #2E7D32; font-weight: bold;" if is_completed else "color: #555;"
+                st.markdown(f"<div style='padding:10px; {text_style}'>{'✅' if is_completed else '⚪'} {mise}</div>", unsafe_allow_html=True)
+            with col2:
+                if not is_completed:
+                    if st.button("Hotovo", key=f"m_{i}"):
+                        st.session_state.completed_missions_ids.append(i)
+                        st.session_state.xp += 50
+                        save_data()
+                        st.balloons()
+                        st.rerun()
 
-# --- TAB 3: VEČERNÍ RITUÁL ---
+# --- TAB 3: VEČERNÍ RITUÁL (AFIRMACE) ---
 with tabs[2]:
-    st.markdown('<div style="background: #2D3142; color: white; padding: 20px; border-radius: 20px;">', unsafe_allow_html=True)
-    st.subheader("🌙 Večerní rituál hrdinky")
+    st.markdown("""
+        <div style="background: linear-gradient(180deg, #2D3142 0%, #4F5D75 100%); color: white; padding: 25px; border-radius: 25px; text-align: center;">
+            <h2 style="color: white;">🌙 Večerní rituál</h2>
+            <p>Přečti si dnešní afirmaci a odpočiň si.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    afirmace = [
-        "Jsem v bezpečí a můžu mluvit, když chci.",
-        "Každý den jsem o kousek statečnější.",
-        "Můj hlas je krásný a důležitý.",
-        "Jsem na sebe hrdá za každý dnešní krůček."
+    afirmace_list = [
+        "Jsem v bezpečí. Můžu mluvit, když chci, a je to v pořádku.",
+        "Každý den jsem o kousek statečnější. Jsem hrdá na sebe.",
+        "Můj hlas je silný a já ho mám ráda.",
+        "Všichni mě mají rádi takovou, jaká jsem."
     ]
     
-    selected_af = random.choice(afirmace)
-    st.markdown(f"### *{selected_af}*")
+    # Vybere afirmaci podle dne v měsíci, aby se měnila denně
+    daily_idx = datetime.now().day % len(afirmace_list)
+    dnesni_afirmace = afirmace_list[daily_idx]
     
-    if st.button("🔊 Poslechnout si afirmaci"):
-        speak(selected_af)
+    st.markdown(f"<div style='font-size: 20px; font-style: italic; text-align: center; padding: 30px;'>\"{dnesni_afirmace}\"</div>", unsafe_allow_html=True)
     
+    if st.button("🔊 Poslechnout si můj vnitřní hlas"):
+        speak(dnesni_afirmace)
+        
     st.divider()
-    st.write("🧘 **Krátká relaxace:** Zavři oči a představ si, jak zítra s úsměvem zvládneš další misi. Jsi hvězda!")
+    st.write("🧘 **Krátká relaxace:** Zavři oči a 3x se zhluboka nadechni. Představ si, jak jsi zítra v klidu a usmíváš se.")
     
-    if st.button("✅ Splnit rituál a jít spát (+20 XP)"):
+    if st.button("✨ Splněno - Odměna 20 XP"):
         st.session_state.xp += 20
         save_data()
-        st.success("Krásné sny, hrdinko!")
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.success("Skvělá práce! Krásnou noc.")
 
-# --- TAB 4: DENÍK A REPORT ---
+# --- TAB 4: DENÍK POCITŮ ---
 with tabs[3]:
-    st.subheader("📈 Tvůj pokrok")
+    st.subheader("📊 Jak se dnes cítíš?")
     
-    # Úzkost - škála
-    st.write("Jak ti dneska bušilo srdíčko?")
-    anxiety = st.select_slider("1 = Klid, 10 = Velký strach", options=range(1, 11), value=5)
+    feeling = st.select_slider("Moje nálada:", options=["😢", "😟", "😐", "🙂", "😊"], value="😐")
+    anxiety = st.select_slider("Jak moc bušilo srdíčko? (1 = klid, 10 = strach)", options=list(range(1, 11)), value=1)
+    note = st.text_area("Co se mi dneska povedlo?", placeholder="Dneska jsem se usmála na paní učitelku...")
     
-    note = st.text_area("Co se ti dneska povedlo? (i maličkost)")
-    
-    if st.button("Uložit do deníku"):
-        st.session_state.mission_history.append({
+    if st.button("Uložit do deníku 🔒"):
+        new_entry = {
             "datum": datetime.now().strftime("%d.%m. %H:%M"),
+            "nalada": feeling,
             "uzkost": anxiety,
             "poznamka": note
-        })
+        }
+        st.session_state.mission_history.append(new_entry)
         save_data()
-        st.success("Uloženo!")
+        st.success("Zapsáno! Jsi šikula.")
 
     st.divider()
-    if st.checkbox("Zobrazit historii pro psychologa"):
+    if st.toggle("Zobrazit historii pro psychologa"):
         for h in reversed(st.session_state.mission_history):
-            st.write(f"**{h['datum']}** | Strach: {h['uzkost']}/10")
-            st.write(f"*{h['poznamka']}*")
-            st.write("---")
+            with st.container():
+                st.markdown(f"""
+                <div class="main-card">
+                    <b>{h['datum']}</b> | Nálada: {h['nalada']} | Strach: {h['uzkost']}/10 <br>
+                    <i>{h['poznamka']}</i>
+                </div>
+                """, unsafe_allow_html=True)
 
-# Uložení na konci každého cyklu
+# Finální uložení při každé akci
 save_data()
